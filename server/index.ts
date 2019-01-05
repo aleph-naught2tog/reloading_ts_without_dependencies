@@ -1,17 +1,7 @@
-// =============================================================================
-// ====== DOC VERSION ONLY =====================================================
-//    The server does not actually run this file.
-//    If you change things in here, nothing else changes; the server won't run differently
-
-/*
-  These are Node system modules -- we `require` them first thing because if they
-  aren't present at all, we want to fail very loudly right off the bat instead
-  of failing later on when we actually need to use them.
-*/
-const http = require('http'); // docs: https://nodejs.org/api/http.html
-const fs = require('fs');     // docs: https://nodejs.org/api/fs.html
-const path = require('path'); // docs: https://nodejs.org/api/path.html
-const url = require('url');   // docs: https://nodejs.org/api/url.html
+import http from "http";  // docs: https://nodejs.org/api/http.html
+import fs from "fs";      // docs: https://nodejs.org/api/fs.html
+import path from "path";  // docs: https://nodejs.org/api/path.html
+import url from "url";    // docs: https://nodejs.org/api/url.html
 
 /**
  * This is the port we want the server to run on: it's the number that you see
@@ -19,14 +9,14 @@ const url = require('url');   // docs: https://nodejs.org/api/url.html
  *
  * @constant {number} PORT
  */
-const PORT = 3000;
+const PORT: number = 3000;
 
 /**
  * This is the 'root' of the server; it is what all other paths are relative to.
  *
  * @constant {string} SERVER_ROOT_FOLDER
  */
-const SERVER_ROOT_FOLDER = './public';
+const SERVER_ROOT_FOLDER: string = "./public";
 
 /**
  * Used to determine the correct content-type to serve the response with.
@@ -36,12 +26,12 @@ const SERVER_ROOT_FOLDER = './public';
  * @param {string} extension the extension of the file that was originally requested
  * @returns {string} the desired file type
  */
-const determineContentType = extension => {
-  const map = {
-    css: 'text/css',
-    js: 'text/javascript',
-    html: 'text/html',
-    plain: 'text/plain'
+const determineContentType = (extension: string): string => {
+  const map: { [key: string]: string } = {
+    css: "text/css",
+    js: "text/javascript",
+    html: "text/html",
+    plain: "text/plain"
   };
 
   if (extension in map) {
@@ -69,20 +59,19 @@ const determineContentType = extension => {
  *
  * @function isModuleRequest
  *
- * @param {Http.IncomingMessage} request the original request from the browser
+ * @param {http.IncomingMessage} request the original request from the browser
  *
  * @returns {boolean} whether the file being requested is a JS module
  */
-const isModuleRequest = request => {
+const isModuleRequest = (request: http.IncomingMessage): boolean => {
   // `referer` is the header that represents who made the request
   const referer = request.headers.referer;
 
   if (!referer) {
     return false;
   } else {
-    return referer.endsWith('.js');
+    return referer.endsWith(".js");
   }
-
 };
 
 /**
@@ -94,18 +83,22 @@ const isModuleRequest = request => {
  *
  * @function makePath
  *
- * @param {Http.IncomingMessage} request
+ * @param {http.IncomingMessage} request
  *
  * @returns {string} the path to find our file at
  */
-const getPath = request => {
+const getPath = (request: http.IncomingMessage): string => {
+  if (!request.url) {
+    throw new Error("Request had no URL");
+  }
+
   const parsedUrl = url.parse(request.url);
 
   if (isModuleRequest(request)) {
     return `${SERVER_ROOT_FOLDER}${parsedUrl.pathname}.js`;
   } else {
     // This ensures that navigating to "localhost:PORT" just loades the homepage
-    if (parsedUrl.pathname === '/') {
+    if (parsedUrl.pathname === "/") {
       return `${SERVER_ROOT_FOLDER}${parsedUrl.pathname}index.html`;
     } else {
       return `${SERVER_ROOT_FOLDER}${parsedUrl.pathname}`;
@@ -120,36 +113,34 @@ const getPath = request => {
  *
  * @function requestHandler
  *
- * @param {Http.IncomingMessage} request
- * @param {Http.ServerResponse} response
+ * @param {http.IncomingMessage} request
+ * @param {http.ServerResponse} response
  */
-const requestHandler = (request, response) => {
-  console.log(`${request.method} ${request.url}`);
+const requestHandler = (request: http.IncomingMessage, response: http.ServerResponse) => {
+  console.log(`[http] ${request.method} ${request.url}`);
 
-  if (request.url === '/favicon.ico') {
+  if (request.url === "/favicon.ico") {
     response.statusCode = 404;
     response.end();
     return;
   }
 
-  const filePath = getPath(request);
-  const extension = path.parse(filePath).ext.replace('.', '');
+  const filePathX = getPath(request);
+  const extension = path.parse(filePathX).ext.replace(".", "");
   const contentType = determineContentType(extension);
 
-  fs.readFile(filePath, (error, fileData) => {
+  fs.readFile(filePathX, (error, fileData) => {
     if (error) {
       console.error(error);
       response.statusCode = 500; // internal server error
-      response.end('There was an error getting the request file.');
+      response.end("There was an error getting the request file.");
     } else {
-      response.setHeader('Content-Type', contentType);
+      response.setHeader("Content-Type", contentType);
       response.end(fileData);
     }
   });
 };
 
 http.createServer(requestHandler).listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
+  console.log(`[http] Listening on port ${PORT}`);
 });
-
-// ==== friendly reminder that this is the doc file! ===========================

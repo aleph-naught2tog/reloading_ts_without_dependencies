@@ -6,6 +6,7 @@
     (If you aren't sure what I mean about extending, I would recommend just
     adding the settings to this file.)
   */
+  "exclude": ["server"],
   "compilerOptions": {
     //    Other compiler settings go here
     "strict": true,

@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "strict": true,
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "removeComments": true,
+    "noEmit": false,
+  },
+  "files": [
+    "index.ts"
+  ]
+}

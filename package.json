@@ -11,14 +11,9 @@
   },
   "devDependencies": {},
   "scripts": {
-    "start": "node server",
-    "redo_server_file": "tsc --allowJs --target esnext --removeComments --outFile server/index.js server/index.doc.js"
+    "start": "tsc -p server/tsconfig.json && node server"
   },
   "keywords": [],
   "author": "aleph-naught2tog",
-  "license": "ISC",
-  "repository": {
-    "type": "git",
-    "url": "git@github.com:aleph-naught2tog/ts_without_dependencies.git"
-  }
+  "license": "ISC"
 }
