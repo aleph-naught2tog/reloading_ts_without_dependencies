@@ -25,6 +25,11 @@ This means that if you add a new HTML page, you should include that `script` tag
 
 The server monitors the `public`<sup>[1](#foot_1)</sup> folder; we now run the Typescript compiler on `--watch`, which means that it will compile as soon as you save a file in your `src` directory. Since it puts that compiled file into `public`, those changes will trigger a refresh, too.
 
+## Helpful Links
+
+  * [WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) (used in the client-side code)
+  * [ws](https://github.com/websockets/ws) (the package used in the server-side code)
+
 ## (Quick) Detailed Overview
 
 Just like before, you don't need to worry anything in this section on unless you _want_ to.
