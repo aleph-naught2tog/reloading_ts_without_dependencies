@@ -1,10 +1,9 @@
-
 import child_process from "child_process"; // https://nodejs.org/api/child_process.html
 
 /**
- * @function startTypescriptCompiler
- *
  * @returns the process the Typescript compiler is running on
+ *
+ * @requires [child_process](https://nodejs.org/api/child_process.html)
  */
 export function startTypescriptCompiler(): child_process.ChildProcess {
   const watchOptions = ["--pretty", "--preserveWatchOutput"];

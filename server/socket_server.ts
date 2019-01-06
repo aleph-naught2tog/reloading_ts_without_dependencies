@@ -1,7 +1,6 @@
 import ws from "ws";
 
-
-export function notifySocketClients(socketServer: ws.Server, data: {}) {
+export function sendToSocketClients(socketServer: ws.Server, data: {}) {
   const stringifiedData = JSON.stringify(data);
 
   socketServer.clients.forEach((client: ws) => {
@@ -12,8 +11,6 @@ export function notifySocketClients(socketServer: ws.Server, data: {}) {
 /**
  * Used for creating and initializing a socket connection that we then use for
  * hot-reloading the site.
- *
- * @function getSocketServer
  *
  * @param {number} port the port the socket should receive clients on
  *

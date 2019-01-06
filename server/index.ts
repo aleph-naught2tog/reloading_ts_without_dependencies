@@ -1,13 +1,11 @@
 import http from "http"; // docs: https://nodejs.org/api/http.html
 import fs from "fs"; // docs: https://nodejs.org/api/fs.html
-import path from "path"; // docs: https://nodejs.org/api/path.html
-import url from "url"; // docs: https://nodejs.org/api/url.html
 
-import ws from "ws";
-
-import { getSocketServer, notifySocketClients as sendToSocketClients } from "./socket_server";
 import { getFolderWatcher } from "./folder_watcher";
 import { startTypescriptCompiler } from "./typescript_compiler";
+import { getSocketServer, sendToSocketClients } from "./socket_server";
+import { setContentType, getServerPathForUrl } from "./http_server";
+import { setCleanupActions } from "./process_helpers";
 
 /**
  * This is the port we want the server to run on: it's the number that you see
@@ -25,130 +23,28 @@ const PORT: number = 3000;
 const SERVER_ROOT_FOLDER: string = "./public";
 
 /**
- * The port for our socket (to enable live reloading) connection.
+ * The port for our socket (to enable live reloading) connection. This number
+ * _must_ match the port number you give the socket in your client-side code.
  *
  * @constant {number} SOCKET_PORT
  */
 const SOCKET_PORT = 3333;
 
 /**
- * Used to determine the correct content-type to serve the response with.
+ * Used to actually process and respond to any requests the server receives.
+ * This does most of the work: it gets the requests from the browser, checks
+ * some things on them, etc.
  *
- * @function determineContentType
- *
- * @param {string} extension the extension of the file that was originally requested
- * @returns {string} the desired file type
- */
-const determineContentType = (extension: string): string => {
-  const map: { [key: string]: string } = {
-    css: "text/css",
-    js: "text/javascript",
-    html: "text/html",
-    plain: "text/plain"
-  };
-
-  if (extension in map) {
-    return map[extension];
-  } else {
-    return map.plain;
-  }
-};
-
-/**
- * Used for determining whether we should serve a Javascript file in response.
- *
- * Because of the fact that module names don't have the extension included in
- * Typescript, we can use the fact that `type="module"` on an HTML `script` element
- * means the browser will make a specific kind of HTTP request.
- *
- * When the browser requests a module, it includes the file that made the
- * request -- if your `index.js` file has an import like
- * `import { aModule } ...`, the server will receive a request from the browser
- * with a `referer` header of something like `index.js`. Other requests don't
- * ordinarily include this header, which is why we can use it here to figure
- * out whether a module has been requested.
- *
- * (FYI: `referer` _really_ is the correct spelling, here.)
- *
- * @function isModuleRequest
- *
- * @param {http.IncomingMessage} request the original request from the browser
- *
- * @returns {boolean} whether the file being requested is a JS module
- */
-const isModuleRequest = (request: http.IncomingMessage): boolean => {
-  // `referer` is the header that represents who made the request
-  const referer = request.headers.referer;
-
-  if (!referer) {
-    return false;
-  } else {
-    return referer.endsWith(".js");
-  }
-};
-
-/**
- * Used to figure out the actual path -- on the _server_ (aka, your computer!) --
- * to the file we want to send as a response.
- *
- * If you change your `SERVER_ROOT_FOLDER` (defined above), that will change
- * what happens in here. (Remember to make sure your `tsconfig.json` matches!)
- *
- * @function makePath
- *
- * @param {http.IncomingMessage} request
- *
- * @returns {string} the path to find our file at
- */
-const getPath = (request: http.IncomingMessage): string => {
-  if (!request.url) {
-    throw new Error("Request had no URL");
-  }
-
-  const parsedUrl = url.parse(request.url);
-
-  if (isModuleRequest(request)) {
-    return `${SERVER_ROOT_FOLDER}${parsedUrl.pathname}.js`;
-  } else {
-    // This ensures that navigating to "localhost:PORT" just loades the homepage
-    if (parsedUrl.pathname === "/") {
-      return `${SERVER_ROOT_FOLDER}${parsedUrl.pathname}index.html`;
-    } else {
-      return `${SERVER_ROOT_FOLDER}${parsedUrl.pathname}`;
-    }
-  }
-};
-
-/**
- * Used for processing and responding to the file requests sent to the server.
- * Presently, the only real 'work' done here is setting the content-type on the response.
- *
- * @function setContentType
- *
- * @param {http.ServerResponse} response
- * @param {string} filePath
- */
-const setContentType = (
-  response: http.ServerResponse,
-  filePath: string
-): void => {
-  const extension = path.parse(filePath).ext.replace(".", "");
-  const contentType = determineContentType(extension);
-
-  response.setHeader("Content-Type", contentType);
-};
-
-/**
- * Used to actually process and respond to any requests the server receives. This
- * does most of the work: it gets the requests from the browser, checks some
- * things on them, etc.
- *
- * @function requestHandler
+ * Right now, the `work` being done is just finding the file and getting its
+ * contents, as well as then handling any errors or setting a `'Content-Type'`
+ * header on our response before we send it.
  *
  * @param {http.IncomingMessage} request
  * @param {http.ServerResponse} response
+ *
+ * @requires [fs](https://nodejs.org/api/fs.html) (external link)
  */
-const requestHandler = (
+const handleRequest = (
   request: http.IncomingMessage,
   response: http.ServerResponse
 ) => {
@@ -160,7 +56,7 @@ const requestHandler = (
     return;
   }
 
-  const filePath = getPath(request);
+  const filePath = getServerPathForUrl(request, SERVER_ROOT_FOLDER);
 
   fs.readFile(filePath, (error, fileData: Buffer) => {
     if (error) {
@@ -174,48 +70,60 @@ const requestHandler = (
   });
 };
 
-/**
- * @function setCleanupActions
- *
- * @param {Array<() => void>} shutdownActions The actions to perform before shutting down
- */
-const setCleanupActions = (shutdownActions: Array<() => void>): void => {
-  process.on("SIGINT", () => {
-    console.error("\n[NODE]", "Caught SIGINT; shutting down servers.");
-
-    for (let actionToPerform of shutdownActions) {
-      actionToPerform();
-    }
-
-    process.exit(0);
-  });
-};
-
+const httpServer = http.createServer(handleRequest);
 const typescriptCompiler = startTypescriptCompiler();
-const httpServer = http.createServer(requestHandler);
+const socketServer = getSocketServer(SOCKET_PORT);
+const fileWatcher = getFolderWatcher(SERVER_ROOT_FOLDER);
 
-const websocketServer = getSocketServer(SOCKET_PORT);
-
-const watcher = getFolderWatcher(SERVER_ROOT_FOLDER);
-watcher.on("change", (event, filename) => {
+/**
+ * Fired when we detect a `change` event from the file watcher.
+ *
+ * The Node docs specify that the `filename` argument is not always reliably
+ * given on all systems; by making it optional (the `?` after `filename` in the
+ * signature means optional) means that TypeScript will force us to handle the
+ * maybe-not-there case. Here, we're just sending it; it's OK if it isn't there.
+ *
+ * It's important to realize, however, that since `filename` might be
+ * `undefined`, we shouldn't use it to as the basis for any logic -- or if we
+ * do, we need to make sure we deal with a situation where it isn't there, too.
+ *
+ * @param {string} event
+ * @param {string} [filename]
+ */
+const handleFileChange = (event: string, filename?: string) => {
   const data: {} = {
     event: event,
     filename: filename,
     shouldReload: true
   };
 
-  sendToSocketClients(websocketServer, data);
-});
+  sendToSocketClients(socketServer, data);
+};
 
+// "change" is the event we want to act on
+// `handleChange` is the function that should execute
+//      when we receive the "change" event
+fileWatcher.on("change", handleFileChange);
+
+/*
+  Here, we send in a list of actions we want taken when the server shuts
+  off (when we `ctrl-c`).
+
+  Specifically:
+    1. Stop the Typescript compiler process
+    2. Shut down each client connection open on our `socketServer`
+    3. Shut down the `socketServer` itself
+    4. Shut down the `httpServer`
+*/
 setCleanupActions([
   () => {
     console.error("[tsc] Shutting down.");
-    typescriptCompiler.kill();
+    typescriptCompiler.kill(); // `kill` is a kind of signal sent to a process
   },
   () => {
     console.error("[ws] Shutting down.");
-    websocketServer.clients.forEach(client => client.terminate());
-    websocketServer.close();
+    socketServer.clients.forEach(client => client.terminate());
+    socketServer.close();
   },
   () => {
     console.error("[http] Shutting down.");
@@ -223,6 +131,15 @@ setCleanupActions([
   }
 ]);
 
+/*
+  The first argument is the port we want the `httpServer` to listen on.
+  The second argument is the function we want executed after it starts listening on that port.
+
+  If we didn't give it a port or gave it the wrong one, it wouldn't get any of
+  the requests we sent it by visiting the site; it'd be like giving your friend
+  the wrong phone number and waiting for them to text you -- you'd never get the
+  message!
+*/
 httpServer.listen(PORT, () => {
   console.log(`[http] Listening on port ${PORT}`);
 });
