@@ -5,9 +5,9 @@ import url from "url"; // docs: https://nodejs.org/api/url.html
 
 import ws from "ws";
 
-import child_process from "child_process";
-
-const DEBUG_LOG: boolean = true;
+import { getSocketServer } from "./socket_server";
+import { getFolderWatcher } from "./folder_watcher";
+import { startTypescriptCompiler } from "./typescript_compiler";
 
 /**
  * This is the port we want the server to run on: it's the number that you see
@@ -24,47 +24,37 @@ const PORT: number = 3000;
  */
 const SERVER_ROOT_FOLDER: string = "./public";
 
+/**
+ * The port for our socket (to enable live reloading) connection.
+ *
+ * @constant {number} SOCKET_PORT
+ */
 const SOCKET_PORT = 3333;
 
-let log: typeof console.log;
-if (DEBUG_LOG) {
-  log = console.log;
-} else {
-  log = () => {
-    /* nothing happens */
-  };
-}
+/**
+ * The server that manages the hot-reload system.
+ *
+ * @constant {ws.Server} serverSocket
+ */
+const websocketServer = getSocketServer(SOCKET_PORT);
 
-const socketServer = new ws.Server({ port: SOCKET_PORT, clientTracking: true });
+const watcher = getFolderWatcher(SERVER_ROOT_FOLDER);
+watcher.on("change", (event, filename) => {
+  websocketServer.clients.forEach((client: ws) => {
+    const data: {} = {
+      event: event,
+      filename: filename,
+      shouldReload: true
+    };
 
-socketServer.on("connection", clientSocket => {
-  log(`[ws] Client connected.`);
-
-  clientSocket.on("close", () => {
-    log(`[ws] Client disconnected`);
-    clientSocket.terminate();
+    client.send(JSON.stringify(data), console.error);
   });
 });
-
-const watcher = fs.watch(
-  SERVER_ROOT_FOLDER,
-  { recursive: true },
-  (event, filename) => {
-    log("[watcher] %s: %s event", event, filename);
-    socketServer.clients.forEach(client => {
-      const data: {} = {
-        shouldReload: true
-      };
-
-      client.send(JSON.stringify(data), console.error);
-    });
-  }
-);
 
 /**
  * Used to determine the correct content-type to serve the response with.
  *
- * @function getType
+ * @function determineContentType
  *
  * @param {string} extension the extension of the file that was originally requested
  * @returns {string} the desired file type
@@ -163,7 +153,7 @@ const requestHandler = (
   request: http.IncomingMessage,
   response: http.ServerResponse
 ) => {
-  log(`[http] ${request.method} ${request.url}`);
+  console.log(`[http] ${request.method} ${request.url}`);
 
   if (request.url === "/favicon.ico") {
     response.statusCode = 404;
@@ -172,64 +162,120 @@ const requestHandler = (
   }
 
   const filePath = getPath(request);
-  const extension = path.parse(filePath).ext.replace(".", "");
-  const contentType = determineContentType(extension);
 
   fs.readFile(filePath, (error, fileData: Buffer) => {
     if (error) {
-      console.error(error);
+      console.error("[http]", error);
       response.statusCode = 500; // internal server error
       response.end("There was an error getting the request file.");
     } else {
-      response.setHeader("Content-Type", contentType);
-
-      if (extension === "html") {
-        const socketInclude = Buffer.from(
-          "<script src='src/socket.js'></script>"
-        );
-        const socketActivation = Buffer.from(
-          `<script>initSocket(${SOCKET_PORT})</script>`
-        );
-        const extendedBuffer = Buffer.concat([
-          fileData,
-          socketInclude,
-          socketActivation
-        ]);
-        response.end(extendedBuffer);
-      } else {
-        response.end(fileData);
-      }
+      handleFileRequest(filePath, response, fileData);
     }
   });
 };
 
-const tsc = child_process.spawn("tsc", [
-  "--watch",
-  "--pretty",
-  "--preserveWatchOutput"
+const typescriptCompiler = startTypescriptCompiler();
+const httpServer = http.createServer(requestHandler);
+
+/**
+ * @function setCleanupActions
+ *
+ * @param {Array<() => void>} shutdownActions The actions to perform before shutting down
+ */
+function setCleanupActions(shutdownActions: Array<() => void>): void {
+  process.on("SIGINT", () => {
+    console.error("\n[NODE]", "Caught SIGINT; shutting down servers.");
+
+    for (let actionToPerform of shutdownActions) {
+      actionToPerform();
+    }
+
+    process.exit(0);
+  });
+}
+
+setCleanupActions([
+  () => {
+    console.error("[tsc] Shutting down.");
+    typescriptCompiler.kill();
+  },
+  () => {
+    console.error("[ws] Shutting down.");
+    websocketServer.clients.forEach(client => client.terminate());
+    websocketServer.close();
+  },
+  () => {
+    console.error("[http] Shutting down.");
+    httpServer.close();
+  }
 ]);
 
-const server = http.createServer(requestHandler);
-
-tsc.stdout.on("data", (data: Buffer) => {
-  console.log(data.toString("utf8").trimRight());
-});
-
-tsc.stderr.on("data", data => {
-  console.log(`stderr: ${data}`);
-});
-
-process.on("SIGINT", () => {
-  tsc.kill();
-  socketServer.clients.forEach(client => {
-    client.terminate();
-  });
-  socketServer.close();
-  server.close();
-
-  process.exit(0);
-});
-
-server.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`[http] Listening on port ${PORT}`);
 });
+
+/**
+ * Used for processing and responding to the file requests sent to the server.
+ * Presently, the only real 'work' done internally here is adding a few lines to
+ * any HTML files we send out for the purpose of enabling hot reloading.
+ *
+ * @function handleFileRequest
+ *
+ * @param {string} filePath
+ * @param {http.ServerResponse} response
+ * @param {Buffer} fileData
+ */
+function handleFileRequest(
+  filePath: string,
+  response: http.ServerResponse,
+  fileData: Buffer
+) {
+  const extension = path.parse(filePath).ext.replace(".", "");
+  const contentType = determineContentType(extension);
+
+  response.setHeader("Content-Type", contentType);
+
+  if (extension === "html") {
+    const fileWithScript = addSocketScript(fileData);
+
+    response.end(fileWithScript);
+  } else {
+    response.end(fileData);
+  }
+}
+
+/**
+ * Used to add a few lines of HTML that link to the client-side pieces of our
+ * hot-reloading socket setup.
+ *
+ * Since HTML in a string like that can be hard to read, here is what we're adding:
+ *
+    ```html
+    <script src="src/socket.js"></script>
+    <script>initSocket(SOCKET_PORT)</script>
+    ```
+ *
+ * The first `script` tag links to the client-side
+ * script so that we have `initSocket` in scope; the second line is used to call
+ * it with the `SOCKET_PORT` we've assigned above, so that both the client and
+ * server know which port to talk on.
+ *
+ * @function injectSocketScript
+ *
+ * @param {Buffer} fileData
+ *
+ * @returns {Buffer} the file with our socket script added
+ */
+function addSocketScript(fileData: Buffer): Buffer {
+  const scriptSrc = Buffer.from("<script src='src/socket.js'></script>");
+  const socketCall = Buffer.from(`<script>initSocket(${SOCKET_PORT})</script>`);
+
+  const totalLength = fileData.length + scriptSrc.length + socketCall.length;
+
+  const extendedBuffer = Buffer.concat(
+    [fileData, scriptSrc, socketCall],
+    totalLength
+  );
+
+  return extendedBuffer;
+}
