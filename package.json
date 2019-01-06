@@ -11,7 +11,8 @@
   },
   "devDependencies": {},
   "scripts": {
-    "start": "tsc -p server/tsconfig.json && node server"
+    "start": "tsc -p server/tsconfig.json && tsc --watch & node server",
+    "server": "node server"
   },
   "keywords": [],
   "author": "aleph-naught2tog",

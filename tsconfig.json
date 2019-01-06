@@ -7,6 +7,7 @@
     adding the settings to this file.)
   */
   "exclude": ["server"],
+  "compileOnSave": true,
   "compilerOptions": {
     //    Other compiler settings go here
     "strict": true,

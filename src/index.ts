@@ -1,5 +1,5 @@
 import { someFunction } from "./other_module";
 
-document.addEventListener('DOMContentLoaded', (_event) => {
+document.addEventListener("DOMContentLoaded", _event => {
   someFunction();
 });

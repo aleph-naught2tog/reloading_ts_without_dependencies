@@ -10,5 +10,6 @@
   },
   "files": [
     "index.ts"
-  ]
+  ],
+  "compileOnSave": false,
 }
