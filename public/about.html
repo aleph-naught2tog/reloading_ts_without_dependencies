@@ -29,19 +29,23 @@
         </p>
 
         <p>
-          This page won't turn blue; there's no <code>script</code> tag. But
+          This page won't turn blue; we haven't included that file. But
           these paragraphs <i>will</i> have a light-yellow background and a
           dotted-line border, because the CSS file is linked in the <code>head</code>
           tag!
         </p>
 
         <p>
-          It <em>will</em> still update when you save the file, however; we now
-          have a server-side injected bit of script to handle that for us.
+          This page <em>will</em> still receive live updates, however, because
+          of the <code>script</code> tag included at the bottom with the socket
+          code.
         </p>
       </section>
     </main>
-
   </body>
+
+  <footer>
+    <script src="src/socket.js"></script>
+  </footer>
 
 </html>

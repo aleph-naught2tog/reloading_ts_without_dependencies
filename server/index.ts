@@ -5,7 +5,7 @@ import url from "url"; // docs: https://nodejs.org/api/url.html
 
 import ws from "ws";
 
-import { getSocketServer } from "./socket_server";
+import { getSocketServer, notifySocketClients as sendToSocketClients } from "./socket_server";
 import { getFolderWatcher } from "./folder_watcher";
 import { startTypescriptCompiler } from "./typescript_compiler";
 
@@ -30,26 +30,6 @@ const SERVER_ROOT_FOLDER: string = "./public";
  * @constant {number} SOCKET_PORT
  */
 const SOCKET_PORT = 3333;
-
-/**
- * The server that manages the hot-reload system.
- *
- * @constant {ws.Server} serverSocket
- */
-const websocketServer = getSocketServer(SOCKET_PORT);
-
-const watcher = getFolderWatcher(SERVER_ROOT_FOLDER);
-watcher.on("change", (event, filename) => {
-  websocketServer.clients.forEach((client: ws) => {
-    const data: {} = {
-      event: event,
-      filename: filename,
-      shouldReload: true
-    };
-
-    client.send(JSON.stringify(data), console.error);
-  });
-});
 
 /**
  * Used to determine the correct content-type to serve the response with.
@@ -140,6 +120,25 @@ const getPath = (request: http.IncomingMessage): string => {
 };
 
 /**
+ * Used for processing and responding to the file requests sent to the server.
+ * Presently, the only real 'work' done here is setting the content-type on the response.
+ *
+ * @function setContentType
+ *
+ * @param {http.ServerResponse} response
+ * @param {string} filePath
+ */
+const setContentType = (
+  response: http.ServerResponse,
+  filePath: string
+): void => {
+  const extension = path.parse(filePath).ext.replace(".", "");
+  const contentType = determineContentType(extension);
+
+  response.setHeader("Content-Type", contentType);
+};
+
+/**
  * Used to actually process and respond to any requests the server receives. This
  * does most of the work: it gets the requests from the browser, checks some
  * things on them, etc.
@@ -169,20 +168,18 @@ const requestHandler = (
       response.statusCode = 500; // internal server error
       response.end("There was an error getting the request file.");
     } else {
-      handleFileRequest(filePath, response, fileData);
+      setContentType(response, filePath);
+      response.end(fileData);
     }
   });
 };
-
-const typescriptCompiler = startTypescriptCompiler();
-const httpServer = http.createServer(requestHandler);
 
 /**
  * @function setCleanupActions
  *
  * @param {Array<() => void>} shutdownActions The actions to perform before shutting down
  */
-function setCleanupActions(shutdownActions: Array<() => void>): void {
+const setCleanupActions = (shutdownActions: Array<() => void>): void => {
   process.on("SIGINT", () => {
     console.error("\n[NODE]", "Caught SIGINT; shutting down servers.");
 
@@ -192,7 +189,23 @@ function setCleanupActions(shutdownActions: Array<() => void>): void {
 
     process.exit(0);
   });
-}
+};
+
+const typescriptCompiler = startTypescriptCompiler();
+const httpServer = http.createServer(requestHandler);
+
+const websocketServer = getSocketServer(SOCKET_PORT);
+
+const watcher = getFolderWatcher(SERVER_ROOT_FOLDER);
+watcher.on("change", (event, filename) => {
+  const data: {} = {
+    event: event,
+    filename: filename,
+    shouldReload: true
+  };
+
+  sendToSocketClients(websocketServer, data);
+});
 
 setCleanupActions([
   () => {
@@ -213,69 +226,3 @@ setCleanupActions([
 httpServer.listen(PORT, () => {
   console.log(`[http] Listening on port ${PORT}`);
 });
-
-/**
- * Used for processing and responding to the file requests sent to the server.
- * Presently, the only real 'work' done internally here is adding a few lines to
- * any HTML files we send out for the purpose of enabling hot reloading.
- *
- * @function handleFileRequest
- *
- * @param {string} filePath
- * @param {http.ServerResponse} response
- * @param {Buffer} fileData
- */
-function handleFileRequest(
-  filePath: string,
-  response: http.ServerResponse,
-  fileData: Buffer
-) {
-  const extension = path.parse(filePath).ext.replace(".", "");
-  const contentType = determineContentType(extension);
-
-  response.setHeader("Content-Type", contentType);
-
-  if (extension === "html") {
-    const fileWithScript = addSocketScript(fileData);
-
-    response.end(fileWithScript);
-  } else {
-    response.end(fileData);
-  }
-}
-
-/**
- * Used to add a few lines of HTML that link to the client-side pieces of our
- * hot-reloading socket setup.
- *
- * Since HTML in a string like that can be hard to read, here is what we're adding:
- *
-    ```html
-    <script src="src/socket.js"></script>
-    <script>initSocket(SOCKET_PORT)</script>
-    ```
- *
- * The first `script` tag links to the client-side
- * script so that we have `initSocket` in scope; the second line is used to call
- * it with the `SOCKET_PORT` we've assigned above, so that both the client and
- * server know which port to talk on.
- *
- * @function injectSocketScript
- *
- * @param {Buffer} fileData
- *
- * @returns {Buffer} the file with our socket script added
- */
-function addSocketScript(fileData: Buffer): Buffer {
-  const scriptSrc = Buffer.from("<script src='src/socket.js'></script>");
-  const socketCall = Buffer.from(`<script>initSocket(${SOCKET_PORT})</script>`);
-
-  const totalLength = fileData.length + scriptSrc.length + socketCall.length;
-
-  const extendedBuffer = Buffer.concat(
-    [fileData, scriptSrc, socketCall],
-    totalLength
-  );
-
-  return extendedBuffer;
-}

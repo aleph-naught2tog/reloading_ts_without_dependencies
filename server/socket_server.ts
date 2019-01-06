@@ -1,5 +1,14 @@
 import ws from "ws";
 
+
+export function notifySocketClients(socketServer: ws.Server, data: {}) {
+  const stringifiedData = JSON.stringify(data);
+
+  socketServer.clients.forEach((client: ws) => {
+    client.send(stringifiedData, console.error);
+  });
+};
+
 /**
  * Used for creating and initializing a socket connection that we then use for
  * hot-reloading the site.
