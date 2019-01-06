@@ -15,6 +15,13 @@ Like before, the code itself is heavily commented, and there are some details un
 
 ## How-to
 
+1. Clone down this repository.
+1. Run `npm install` to install Typescript, the two types we need, and `ws`.
+2. `npm run-script server:compile` compiles our server code.
+3. `npm start` to start the server.
+
+You only need to re-run step 2 if you are poking around in the server code at all. Otherwise, `npm start` should be enough once you've done steps 1 and 2 at least once (after cloning down this repository).
+
 As before, you can just clone down this repo and start working in it, both the `src` and `public` directories as before.
 
 For the hot-reloading, you need to include a `script` tag at the bottom of the page, just like with any other Javascript files you want loaded. The two sample HTML pages include this already.
