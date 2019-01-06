@@ -45,15 +45,6 @@ I am keeping this brief for now, with a sincere promise of a better detailed wri
 
 The code is _very_ heavily commented, as before.
 
-### Terms used
-
-* **instance**: a specific one of a kind of thing. (How's _that_ for a useless definition?) If we were talking about `Dog`s, we could say my dog Simon is an `instance` of a `Dog`.
-* **process**: an _instance_ of a program. Your web browser is a program -- it exists even when you don't have it open and running. Once you open it, it's running -- that running browser _instance_ is a process (many different processes, actually). Once you close your browser, those processes complete or stop.
-* **port**: something in a computer or network used for communication. They are the numbers that come after a `:` in a url -- e.g., `localhost:3000`, `3000` is a port number. A process _listens_ at a port.
-
-* **server-side**: refers to the part of the app in this case that is _not_ running in the browser. Here, those are the files in `server`.
-* **client-side**: refers to the part of the app that _is_ running in the browser
-
 ## Files
 
 TODO: write stuff!
