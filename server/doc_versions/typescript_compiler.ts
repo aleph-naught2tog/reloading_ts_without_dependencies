@@ -6,10 +6,12 @@ import child_process from "child_process"; // https://nodejs.org/api/child_proce
  * @requires [child_process](https://nodejs.org/api/child_process.html)
  */
 export function startTypescriptCompiler(): child_process.ChildProcess {
+  // --pretty means we have the colored output
+  // --preserveWatchOutput means we don't want the screen cleared on every compile
   const watchOptions = ["--pretty", "--preserveWatchOutput"];
 
   const typescriptProcess = child_process.spawn("tsc", [
-    "--watch",
+    "--watch", // --watch means we want it to watch the folder and compile on save
     ...watchOptions
   ]);
 

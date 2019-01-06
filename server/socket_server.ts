@@ -8,17 +8,6 @@ export function sendToSocketClients(socketServer: ws.Server, data: {}) {
   });
 };
 
-/**
- * Used for creating and initializing a socket connection that we then use for
- * hot-reloading the site.
- *
- * @param {number} port the port the socket should receive clients on
- *
- * @returns the running, initialized socket connection
- *
- * @requires [ws](https://github.com/websockets/ws/blob/HEAD/doc/ws.md) (external link)
- */
-
 export function getSocketServer(port: number): ws.Server {
   const socketServer = new ws.Server({ port: port, clientTracking: true });
 
