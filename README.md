@@ -43,7 +43,7 @@ Just like before, you don't need to worry anything in this section on unless you
 
 I am keeping this brief for now, with a sincere promise of a better detailed write-up later. Hot-reloading introduces a number of moving parts, which means more complexity.
 
-The code is _very_ heavily commented, as before.
+The code is _very_ heavily commented, as before -- in the `server/doc_version` folder. The clean, commentless version is in the base of `server`.
 
 ## Files
 
